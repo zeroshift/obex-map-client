@@ -5,7 +5,7 @@ import os
 import uuid
 import StringIO
 import lightblue
-
+import logging
 
 # Target UUID for the Message Access Profile
 MAS_TARGET_UUID = uuid.UUID('{bb582b40-420c-11db-b0de-0800200c9a66}').bytes
@@ -42,8 +42,13 @@ STATUS_VALUE_YES = STATUS_VALUE_TAG + '\x01';
 
 class MAPClient(object):
 
-    def __init__(self, address, port):
+    def __init__(self, address, port, debug=False):
         self.client = lightblue.obex.OBEXClient(address, port)
+        # Setup Logging
+        if not debug:
+            logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.WARNING)
+        else:
+            logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.DEBUG)
 
     def connect(self):
         response = self.client.connect({'target': MAS_TARGET_UUID})
@@ -52,14 +57,14 @@ class MAPClient(object):
                 response was "%s")' % response.reason)
 
     def disconnect(self):
-        print "Disconnecting..."
+        logging.info("Disconnecting...")
         response = self.client.disconnect()
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def ls(self):
         dirlist = StringIO.StringIO()
         response = self.client.get({'type': 'x-obex/folder-listing\x00'}, dirlist)
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
         if response.code == lightblue.obex.OK:
             files = self._parsefolderlisting(dirlist.getvalue())
             if len(files) == 0:
@@ -79,7 +84,7 @@ class MAPClient(object):
         else:
             # change to subdirectory
             response = self.client.setpath({'name': dirname})
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def put(self, filename):
         print 'Sending %s...' % filename
@@ -90,7 +95,7 @@ class MAPClient(object):
             return
         response = self.client.put({'name': os.path.basename(filename)}, f)
         f.close()
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def get(self, filename):
         if os.path.isfile(filename):
@@ -100,19 +105,19 @@ class MAPClient(object):
         f = file(filename, 'wb')
         response = self.client.get({'name': filename}, f)
         f.close()
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def rm(self, filename):
         response = self.client.delete({'name': filename})
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def mkdir(self, dirname):
         response = self.client.setpath({'name': dirname}, createdirs=True)
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     def rmdir(self, dirname):
         response = self.client.delete({'name': dirname})
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
         if response.code == lightblue.obex.PRECONDITION_FAILED:
             print 'Directory contents must be deleted first'
 
@@ -132,10 +137,40 @@ class MAPClient(object):
                                     'name': '',
                                     'application-parameters': parameters},
                                    msglist)
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
         if response.code == lightblue.obex.OK:
             print 'Messages:'
             self._parsemessagelisting(msglist.getvalue())
+
+    # Adding new functions for better use as a module
+    def get_lsmsg(self, type):
+       # additional application parameters go below
+        parameters = ''
+        if type == 'unread':
+            parameters += FILTER_READ_STATUS_UNREAD
+        elif type == 'read':
+            parameters += FILTER_READ_STATUS_READ
+        else:
+            parameters += FILTER_READ_STATUS_BOTH
+
+        msglist = StringIO.StringIO()
+        response = self.client.get({'type': 'x-bt/MAP-msg-listing\x00', 
+                                    'name': '',
+                                    'application-parameters': parameters},
+                                   msglist)
+        logging.debug('Server response:', response.reason)
+        if response.code == lightblue.obex.OK:
+            print 'Messages:'
+            self._parsemessagelisting(msglist.getvalue()) 
+
+        data = {}
+        for line in self._parsemessagelisting(msglist.getvalue()).split('\n'):
+           pass 
+
+    def get_message_for_handle(self, handle):
+        return None
+
+    # END new functions 
 
     def getmsg(self, handle):
         if handle == '':
@@ -147,7 +182,7 @@ class MAPClient(object):
                                     'name': handle,
                                     'application-parameters': ATTACHMENT_OFF + CHARSET_UTF8},
                                    msg)
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
         if response.code == lightblue.obex.OK:
             print 'Message', handle + ':'
             print msg.getvalue()
@@ -163,7 +198,7 @@ class MAPClient(object):
                                     'application-parameters': STATUS_INDICATOR_READ + STATUS_VALUE_YES}, 
                                    fillerbody)
         fillerbody.close()
-        print 'Server response:', response.reason
+        logging.debug('Server response:', response.reason)
 
     # XML parsing
     def _parsefolderlisting(self, xmldata):
@@ -281,7 +316,6 @@ def main():
         except Exception, e:
             print "Error while disconnecting:", e
             pass
-
 
 if __name__ == "__main__":
     main()
