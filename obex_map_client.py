@@ -160,15 +160,30 @@ class MAPClient(object):
                                    msglist)
         logging.debug('Server response:', response.reason)
         if response.code == lightblue.obex.OK:
-            print 'Messages:'
-            self._parsemessagelisting(msglist.getvalue()) 
-
-        data = {}
-        for line in self._parsemessagelisting(msglist.getvalue()).split('\n'):
-           pass 
+            data = []
+            for element in self._get_parsemessagelisting(msglist.getvalue()):
+                data.append(element.attrib)
+            return data 
 
     def get_message_for_handle(self, handle):
-        return None
+        if handle:
+            msg = StringIO.StringIO()
+            response = self.client.get({'type': 'x-bt/message\x00',
+                                    'name': handle,
+                                    'application-parameters': ATTACHMENT_OFF + CHARSET_UTF8},
+                                   msg)
+            logging.debug('Server response:', response.reason)
+            if response.code == lightblue.obex.OK:
+                data = {}
+                for line in msg.getvalue().split('\r\n'):
+                    try:
+                        key,value = line.split(':')
+                        data[key] = value 
+                    except Exception, e:
+                        pass
+                return data
+        else:
+            return False 
 
     # END new functions 
 
@@ -245,6 +260,22 @@ class MAPClient(object):
                 for key, value in element.attrib.iteritems():
                     print '\t' + key + ': ' + value
                 print
+
+    # Updated to get messages rather than print
+    def _get_parsemessagelisting(self, xmldata):
+        if len(xmldata) == 0:
+            logging.warn("Error parsing folder-listing XML: no xml data")
+        
+        import xml.etree.ElementTree as ET
+        root = ET.XML(xmldata)
+        return root.getiterator('msg')
+        #for element in root.getiterator('msg'):
+        #    if 'handle' in element.attrib:
+        #        print '[message header #' + element.attrib['handle'] + ']'
+        #        
+        #        for key, value in element.attrib.iteritems():
+        #            print '\t' + key + ': ' + value
+        #        print
 
 
 def processcommands(client):
